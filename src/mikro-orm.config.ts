@@ -1,10 +1,11 @@
-import { __prod__ } from "./constants";
-import { Post } from "./entities/Post";
 import { MikroORM } from '@mikro-orm/core';
+import { __prod__ } from "./constants";
 import path from 'path';
+import { Post } from "./entities/Post";
+import { User } from "./entities/User";
 
 const mikroOrmConfig = {
-  entities: [Post],
+  entities: [Post, User],
   type: 'postgresql',
   dbName: 'lidit',
   user: 'postgres',
