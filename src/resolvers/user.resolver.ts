@@ -1,4 +1,4 @@
-import { Arg, Ctx, Field, InputType, Mutation, ObjectType, Resolver } from "type-graphql";
+import { Arg, Ctx, Field, InputType, Mutation, ObjectType, Query, Resolver } from "type-graphql";
 import argon2 from 'argon2';
 import { MyContext } from "src/types";
 import { User } from "../entities/User";
@@ -35,7 +35,7 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async register(
     @Arg('options', () => UsernamePasswordInput) { username, password }: UsernamePasswordInput,
-    @Ctx() { em }: MyContext,
+    @Ctx() { em, req }: MyContext,
   ): Promise<UserResponse> {
     const userRes = new UserResponse();
     const hashedPassword = await argon2.hash(password);
@@ -53,7 +53,10 @@ export class UserResolver {
         return userRes;
       }
     }
+
     userRes.user = user;
+    req.session.userId = user.id;
+
     return userRes;
   }
 
@@ -105,6 +108,37 @@ export class UserResolver {
     req.session.userId = user.id;
 
     userRes.user = user;
+    return userRes;
+  }
+
+  @Query(() => UserResponse, { nullable: true })
+  async profile(
+    @Ctx() { req, em }: MyContext,
+  ): Promise<UserResponse> {
+    const userId = req.session.userId;
+    const userRes = new UserResponse();
+
+    if (userId) {
+      const user = await em.findOne(User, { id: userId });
+      if (!user) {
+        const err = new FieldError();
+        err.field = 'id';
+        err.message = `Invalid id!`;
+
+        userRes.errors = [err];
+      }
+      else {
+        userRes.user = user;
+      }
+    } else {
+      const notAuthErr = new FieldError();
+      notAuthErr.field = 'user';
+      notAuthErr.message = 'User is not log in!';
+
+      userRes.errors = [notAuthErr];
+    }
+
+    console.log({ userRes })
     return userRes;
   }
 }

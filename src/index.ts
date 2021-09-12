@@ -45,7 +45,7 @@ const main = async () => {
       secret: 'ecec',
       resave: false,
     })
-  )
+  );
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
