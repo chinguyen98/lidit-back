@@ -11,6 +11,7 @@ import connectRedis from 'connect-redis';
 import { PostResolver } from './resolvers/post.resolver';
 import { UserResolver } from './resolvers/user.resolver';
 import { MyContext } from './types';
+import cors from 'cors';
 
 /* Var to session */
 declare module 'express-session' {
@@ -27,6 +28,11 @@ const main = async () => {
 
   const redisStore = connectRedis(session);
   const redisClient = redis.createClient();
+
+  app.use(cors({
+    origin: 'http://localhost:3000',
+    credentials: true,
+  }))
 
   app.use(
     session({
@@ -55,7 +61,11 @@ const main = async () => {
     context: ({ req, res }): MyContext => ({ em: orm.em, req, res }),
   });
   await apolloServer.start();
-  apolloServer.applyMiddleware({ app });
+  apolloServer.applyMiddleware({
+    app, cors: {
+      origin: false,
+    }
+  });
 
   app.get('/', (_, res) => {
     res.send('Hello World!');
