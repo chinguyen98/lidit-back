@@ -99,7 +99,7 @@ export class UserResolver {
     if (!isPasswordValid) {
       const err = new FieldError();
       err.field = 'password';
-      err.message = `Password does not match!`;
+      err.message = `Inccorrect password!`;
 
       userRes.errors = [err];
       return userRes;
