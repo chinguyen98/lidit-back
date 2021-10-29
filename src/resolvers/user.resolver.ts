@@ -1,7 +1,17 @@
-import { Arg, Ctx, Field, InputType, Mutation, ObjectType, Query, Resolver } from "type-graphql";
-import argon2 from 'argon2';
+import {
+  Arg,
+  Ctx,
+  Field,
+  InputType,
+  Mutation,
+  ObjectType,
+  Query,
+  Resolver,
+} from "type-graphql";
+import argon2 from "argon2";
 import { MyContext } from "src/types";
 import { User } from "../entities/User";
+import { COOKIE_NAME } from "../constants";
 
 @InputType()
 class UsernamePasswordInput {
@@ -34,8 +44,9 @@ class UserResponse {
 export class UserResolver {
   @Mutation(() => UserResponse)
   async register(
-    @Arg('options', () => UsernamePasswordInput) { username, password }: UsernamePasswordInput,
-    @Ctx() { em, req }: MyContext,
+    @Arg("options", () => UsernamePasswordInput)
+    { username, password }: UsernamePasswordInput,
+    @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
     const userRes = new UserResponse();
     const hashedPassword = await argon2.hash(password);
@@ -44,9 +55,9 @@ export class UserResolver {
       await em.persistAndFlush(user);
     } catch (err) {
       /* Duplicate username error! */
-      if (err.code === '23505') {
+      if (err.code === "23505") {
         const err = new FieldError();
-        err.field = 'username';
+        err.field = "username";
         err.message = `username is already taken!`;
 
         userRes.errors = [err];
@@ -62,15 +73,16 @@ export class UserResolver {
 
   @Mutation(() => UserResponse)
   async login(
-    @Arg('options', () => UsernamePasswordInput) { username, password }: UsernamePasswordInput,
-    @Ctx() { em, req }: MyContext,
+    @Arg("options", () => UsernamePasswordInput)
+    { username, password }: UsernamePasswordInput,
+    @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
     const user = await em.findOne(User, { username });
     const userRes = new UserResponse();
 
     if (username.length <= 2) {
       const err = new FieldError();
-      err.field = 'username';
+      err.field = "username";
       err.message = `Length must be greater than 2!`;
 
       userRes.errors = [err];
@@ -79,7 +91,7 @@ export class UserResolver {
 
     if (password.length <= 2) {
       const err = new FieldError();
-      err.field = 'password';
+      err.field = "password";
       err.message = `Length must be greater than 2!`;
 
       userRes.errors = [err];
@@ -88,7 +100,7 @@ export class UserResolver {
 
     if (!user) {
       const err = new FieldError();
-      err.field = 'username';
+      err.field = "username";
       err.message = `Username ${username} does not exist!`;
 
       userRes.errors = [err];
@@ -98,7 +110,7 @@ export class UserResolver {
     const isPasswordValid = await argon2.verify(user.password, password);
     if (!isPasswordValid) {
       const err = new FieldError();
-      err.field = 'password';
+      err.field = "password";
       err.message = `Inccorrect password!`;
 
       userRes.errors = [err];
@@ -112,9 +124,7 @@ export class UserResolver {
   }
 
   @Query(() => UserResponse, { nullable: true })
-  async profile(
-    @Ctx() { req, em }: MyContext,
-  ): Promise<UserResponse> {
+  async profile(@Ctx() { req, em }: MyContext): Promise<UserResponse> {
     const userId = req.session.userId;
     const userRes = new UserResponse();
 
@@ -122,23 +132,36 @@ export class UserResolver {
       const user = await em.findOne(User, { id: userId });
       if (!user) {
         const err = new FieldError();
-        err.field = 'id';
+        err.field = "id";
         err.message = `Invalid id!`;
 
         userRes.errors = [err];
-      }
-      else {
+      } else {
         userRes.user = user;
       }
     } else {
       const notAuthErr = new FieldError();
-      notAuthErr.field = 'user';
-      notAuthErr.message = 'User is not log in!';
+      notAuthErr.field = "user";
+      notAuthErr.message = "User is not log in!";
 
       userRes.errors = [notAuthErr];
     }
 
-    console.log({ userRes })
+    console.log({ userRes });
     return userRes;
+  }
+
+  @Mutation(() => Boolean)
+  async logout(@Ctx() { req, res }: MyContext) {
+    return new Promise((resolve) =>
+      req.session.destroy((err) => {
+        res.clearCookie(COOKIE_NAME);
+        if (err) {
+          resolve(false);
+          return;
+        }
+        resolve(true);
+      })
+    );
   }
 }
