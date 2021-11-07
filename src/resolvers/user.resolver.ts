@@ -147,7 +147,7 @@ export class UserResolver {
       userRes.errors = [notAuthErr];
     }
 
-    console.log({ userRes });
+    console.log({ user: userRes.user });
     return userRes;
   }
 
