@@ -1,5 +1,6 @@
 import argon2 from 'argon2';
 import { MyContext } from 'src/types';
+import { sendEmail } from '../utils/sendEmail';
 import {
   Arg,
   Ctx,
@@ -10,7 +11,8 @@ import {
   Query,
   Resolver,
 } from 'type-graphql';
-import { COOKIE_NAME } from '../constants';
+import { v4 as uuid } from 'uuid';
+import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from '../constants';
 import { User } from '../entities/User';
 
 @InputType()
@@ -174,10 +176,24 @@ export class UserResolver {
   }
 
   @Mutation(() => Boolean)
-  async forgotPassword(): // @Arg('email', () => String) email: string,
-  // @Ctx() { em }: MyContext
-  Promise<Boolean> {
-    // const user = await em.findOne(User, {});
+  async forgotPassword(
+    @Arg('email', () => String) email: string,
+    @Ctx() { em, redisClient }: MyContext
+  ): Promise<Boolean> {
+    const user = await em.findOne(User, { email });
+    if (user) {
+      const token = uuid();
+      await redisClient.set(
+        `${FORGET_PASSWORD_PREFIX}${token}`,
+        user.id,
+        'ex',
+        1000 * 60 * 60 * 24 * 3
+      );
+
+      const link = `<a href="http://localhost:3000/change-password/${token}">Reset password!</a>`;
+
+      await sendEmail(email, link);
+    }
     return true;
   }
 }

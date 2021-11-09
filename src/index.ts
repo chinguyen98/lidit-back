@@ -1,20 +1,20 @@
 //import "reflect-metadata";
-import { MikroORM } from "@mikro-orm/core";
-import { ApolloServer } from "apollo-server-express";
-import connectRedis from "connect-redis";
-import cors from "cors";
-import express from "express";
-import session from "express-session";
-import redis from "redis";
-import { buildSchema } from "type-graphql";
-import { COOKIE_NAME, __prod__ } from "./constants";
-import mikroOrmConfig from "./mikro-orm.config";
-import { PostResolver } from "./resolvers/post.resolver";
-import { UserResolver } from "./resolvers/user.resolver";
-import { MyContext } from "./types";
+import { MikroORM } from '@mikro-orm/core';
+import { ApolloServer } from 'apollo-server-express';
+import connectRedis from 'connect-redis';
+import cors from 'cors';
+import express from 'express';
+import session from 'express-session';
+import redis from 'ioredis';
+import { buildSchema } from 'type-graphql';
+import { COOKIE_NAME, __prod__ } from './constants';
+import mikroOrmConfig from './mikro-orm.config';
+import { PostResolver } from './resolvers/post.resolver';
+import { UserResolver } from './resolvers/user.resolver';
+import { MyContext } from './types';
 
 /* Var to session */
-declare module "express-session" {
+declare module 'express-session' {
   export interface SessionData {
     userId: number;
   }
@@ -27,11 +27,11 @@ const main = async () => {
   const app = express();
 
   const redisStore = connectRedis(session);
-  const redisClient = redis.createClient();
+  const redisClient = new redis();
 
   app.use(
     cors({
-      origin: "http://localhost:3000",
+      origin: 'http://localhost:3000',
       credentials: true,
     })
   );
@@ -40,17 +40,17 @@ const main = async () => {
     session({
       name: COOKIE_NAME,
       store: new redisStore({
-        client: redisClient,
+        client: redisClient as any,
         disableTouch: true,
       }),
       cookie: {
         maxAge: 1000 * 60 * 60 * 24 * 365 * 10,
         httpOnly: true,
         secure: __prod__,
-        sameSite: "lax",
+        sameSite: 'lax',
       },
       saveUninitialized: false,
-      secret: "ecec",
+      secret: 'ecec',
       resave: false,
     })
   );
@@ -60,7 +60,12 @@ const main = async () => {
       resolvers: [PostResolver, UserResolver],
       validate: false,
     }),
-    context: ({ req, res }): MyContext => ({ em: orm.em, req, res }),
+    context: ({ req, res }): MyContext => ({
+      em: orm.em,
+      req,
+      res,
+      redisClient,
+    }),
   });
   await apolloServer.start();
   apolloServer.applyMiddleware({
@@ -70,8 +75,8 @@ const main = async () => {
     },
   });
 
-  app.get("/", (_, res) => {
-    res.send("Hello World!");
+  app.get('/', (_, res) => {
+    res.send('Hello World!');
   });
 
   app.listen(4000, () => {
