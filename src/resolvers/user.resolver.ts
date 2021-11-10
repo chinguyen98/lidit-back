@@ -175,6 +175,39 @@ export class UserResolver {
     );
   }
 
+  @Mutation(() => UserResponse)
+  async changePassword(
+    @Arg('newPassword', () => String) newPassword: string,
+    @Arg('token', () => String) token: string,
+    @Ctx() { redisClient, em, req }: MyContext
+  ): Promise<UserResponse> {
+    const redisKey = `${FORGET_PASSWORD_PREFIX}${token}`;
+    const userId = await redisClient.get(redisKey);
+
+    if (!userId) {
+      return {
+        errors: [{ field: 'token', message: 'Invalid token!' }],
+      };
+    }
+
+    const user = await em.findOne(User, { id: parseInt(userId) });
+    if (!user) {
+      return {
+        errors: [{ field: 'token', message: 'User is not exists!' }],
+      };
+    }
+
+    user.password = await argon2.hash(newPassword);
+    await em.persistAndFlush(user);
+
+    await redisClient.del(redisKey);
+
+    /* Login user after change password! */
+    req.session.userId = user.id;
+
+    return { user };
+  }
+
   @Mutation(() => Boolean)
   async forgotPassword(
     @Arg('email', () => String) email: string,
