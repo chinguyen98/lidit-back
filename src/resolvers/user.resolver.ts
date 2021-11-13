@@ -1,19 +1,11 @@
 import argon2 from 'argon2';
 import { MyContext } from 'src/types';
 import { sendEmail } from '../utils/sendEmail';
-import {
-  Arg,
-  Ctx,
-  Field,
-  InputType,
-  Mutation,
-  ObjectType,
-  Query,
-  Resolver,
-} from 'type-graphql';
+import { Arg, Ctx, Field, InputType, Mutation, ObjectType, Query, Resolver } from 'type-graphql';
 import { v4 as uuid } from 'uuid';
 import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from '../constants';
 import { User } from '../entities/User';
+import { getConnection } from 'typeorm';
 
 @InputType()
 class UsernamePasswordInput {
@@ -51,19 +43,25 @@ export class UserResolver {
   async register(
     @Arg('options', () => UsernamePasswordInput)
     { username, password, email }: UsernamePasswordInput,
-    @Ctx() { em, req }: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
     const userRes = new UserResponse();
     const hashedPassword = await argon2.hash(password);
-    const user = em.create(User, { username, password: hashedPassword, email });
+    let user;
     try {
-      await em.persistAndFlush(user);
-    } catch (err) {
-      /* Duplicate username error! */
-      if (err.code === '23505') {
+      const result = await getConnection()
+        .createQueryBuilder()
+        .insert()
+        .into(User)
+        .values([{ email, username, password: hashedPassword }])
+        .returning('*')
+        .execute();
+      user = result.raw[0];
+    } catch (error) {
+      if (error.code === '23505') {
         const err = new FieldError();
-        err.field = 'username';
-        err.message = `username is already taken!`;
+        err.field = 'usernameoremail';
+        err.message = `Username or email already exist!`;
 
         userRes.errors = [err];
         return userRes;
@@ -80,14 +78,13 @@ export class UserResolver {
   async login(
     @Arg('usernameOrEmail', () => String) usernameOrEmail: string,
     @Arg('password', () => String) password: string,
-    @Ctx() { em, req }: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
-    const user = await em.findOne(
-      User,
-      usernameOrEmail.includes('@')
+    const user = await User.findOne({
+      where: usernameOrEmail.includes('@')
         ? { email: usernameOrEmail }
-        : { username: usernameOrEmail }
-    );
+        : { username: usernameOrEmail },
+    });
     const userRes = new UserResponse();
 
     if (usernameOrEmail.length <= 2) {
@@ -134,12 +131,12 @@ export class UserResolver {
   }
 
   @Query(() => UserResponse, { nullable: true })
-  async profile(@Ctx() { req, em }: MyContext): Promise<UserResponse> {
+  async profile(@Ctx() { req }: MyContext): Promise<UserResponse> {
     const userId = req.session.userId;
     const userRes = new UserResponse();
 
     if (userId) {
-      const user = await em.findOne(User, { id: userId });
+      const user = await User.findOne(userId);
       if (!user) {
         const err = new FieldError();
         err.field = 'id';
@@ -179,7 +176,7 @@ export class UserResolver {
   async changePassword(
     @Arg('newPassword', () => String) newPassword: string,
     @Arg('token', () => String) token: string,
-    @Ctx() { redisClient, em, req }: MyContext
+    @Ctx() { redisClient, req }: MyContext
   ): Promise<UserResponse> {
     const redisKey = `${FORGET_PASSWORD_PREFIX}${token}`;
     const userId = await redisClient.get(redisKey);
@@ -190,15 +187,15 @@ export class UserResolver {
       };
     }
 
-    const user = await em.findOne(User, { id: parseInt(userId) });
+    const userIdNum = parseInt(userId);
+    const user = await User.findOne(userIdNum);
     if (!user) {
       return {
         errors: [{ field: 'token', message: 'User is not exists!' }],
       };
     }
 
-    user.password = await argon2.hash(newPassword);
-    await em.persistAndFlush(user);
+    User.update({ id: userIdNum }, { password: await argon2.hash(newPassword) });
 
     await redisClient.del(redisKey);
 
@@ -211,9 +208,9 @@ export class UserResolver {
   @Mutation(() => Boolean)
   async forgotPassword(
     @Arg('email', () => String) email: string,
-    @Ctx() { em, redisClient }: MyContext
+    @Ctx() { redisClient }: MyContext
   ): Promise<Boolean> {
-    const user = await em.findOne(User, { email });
+    const user = await User.findOne({ where: { email } });
     if (user) {
       const token = uuid();
       await redisClient.set(
